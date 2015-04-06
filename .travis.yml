@@ -1,0 +1,16 @@
+language: scala
+scala:
+- 2.11.6
+git:
+  depth: 1
+cache:
+  directories:
+  - $HOME/.m2
+  - $HOME/.ivy2
+  - $HOME/.sbt
+after_success:
+- '[[ $TRAVIS_BRANCH == "master" ]] && { sbt ++$TRAVIS_SCALA_VERSION publish; };'
+env:
+  global:
+  - secure: aYYJw2fZ3eGkhPR81pPJEU+KqceTz/RSueJyxvXXbapRY8GNqkhLTesg09Db4dJLh+s2/DvlRDDe7CtMUaBbLcU4zXHckZkAXnQbZPUcjaKVCe6SJLeDuc9Gp4onXGrgVDijkIr0xYQMTTjBLJEc6aZBX9vHP174asnZKnhseDY=
+  - secure: aIDGwZwYUqt9epUzlSePFBPYuAPBg8HiSMA0u6xtpYisOpvUqpCfkxktEEX2ttattuGh2isl267R4byJTZhbQRn6uKnsNaIONA72/oIVSJo9r7Hn41rTY1oHdZ3hPrk4FQbVQGmglwHBudwNuu3ZYNCC1AoPo4kfWwDHQD590bw=
