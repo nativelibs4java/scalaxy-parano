@@ -6,15 +6,19 @@ class SyntaxUtilsTest extends BaseTest with SyntaxUtils {
 
   behavior of "SyntaxUtils"
 
+  object ArgsSpecified {
+    def unapplySeq(tree: Apply) = Option(tree) collect {
+      case Apply(target, args) => args.map(isArgSpecified(target, _))
+    }
+  }
+
   it should "detect args that are specified of left to default" in {
     {
       val Block(List(_), f12) = parse("""
         def f(a: Int, b: Int) = ???
         f(1, 2)
       """)
-      val Apply(target, List(a, b)) = f12
-      isArgSpecified(target, a) should be(true)
-      isArgSpecified(target, b) should be(true)
+      val ArgsSpecified(true, true) = f12
     }
 
     {
@@ -23,14 +27,8 @@ class SyntaxUtilsTest extends BaseTest with SyntaxUtils {
         f(1, 2)
         f(1)
       """)
-
-      { val Apply(target, List(a, b)) = f12
-        isArgSpecified(target, a) should be(true)
-        isArgSpecified(target, b) should be(true) }
-
-      { val Apply(target, List(a, b)) = f1
-        isArgSpecified(target, a) should be(true)
-        isArgSpecified(target, b) should be(false) }
+      val ArgsSpecified(true, true) = f12
+      val ArgsSpecified(true, false) = f1
     }
 
     {
@@ -40,18 +38,9 @@ class SyntaxUtilsTest extends BaseTest with SyntaxUtils {
         f(1)
         f()
       """)
-
-      { val Apply(target, List(a, b)) = f12
-        isArgSpecified(target, a) should be(true)
-        isArgSpecified(target, b) should be(true) }
-
-      { val Apply(target, List(a, b)) = f1
-        isArgSpecified(target, a) should be(true)
-        isArgSpecified(target, b) should be(false) }
-
-      { val Apply(target, List(a, b)) = f0
-        isArgSpecified(target, a) should be(false)
-        isArgSpecified(target, b) should be(false) }
+      val ArgsSpecified(true, true) = f12
+      val ArgsSpecified(true, false) = f1
+      val ArgsSpecified(false, false) = f0
     }
   }
 }
