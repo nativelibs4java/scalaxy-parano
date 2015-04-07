@@ -21,7 +21,8 @@ trait ParanoChecks extends SyntaxUtils with Messages {
   private def getFragments(name: String) =
     name.split("""\b|[_-]|(?<=[a-z])(?=[A-Z])""").filter(_.length >= 3)
 
-  private case class RichName(name: String) {
+  private case class RichName(symbol: Symbol) {
+    val name = symbol.name.toString
     val fragments = getFragments(name).toSet
 
     def containsExactFragment(str: String): Boolean = {
@@ -31,17 +32,17 @@ trait ParanoChecks extends SyntaxUtils with Messages {
     }
   }
 
-  private val methodParams = new mutable.HashMap[MethodSymbol, List[List[RichName]]]
-  private def getMethodParams(sym: MethodSymbol): List[List[RichName]] = {
+  private val methodParams = new mutable.HashMap[MethodSymbol, List[List[(Symbol, RichName)]]]
+  private def getMethodParamNamess(sym: MethodSymbol): List[List[(Symbol, RichName)]] = {
     methodParams synchronized {
       methodParams.getOrElseUpdate(sym, {
         // Case class extractors only care about the first params group.
-        sym.paramLists.map(_.map(param => RichName(param.name.toString)))
+        sym.paramLists.map(_.map(param => param -> RichName(param)))
       })
     }
   }
-  private val methodParamTypeGroups = new mutable.HashMap[MethodSymbol, Map[Int, List[(String, Int)]]]
-  private def getMethodParamTypeGroups(sym: MethodSymbol): Map[Int, List[(String, Int)]] = {
+  private val methodParamTypeGroups = new mutable.HashMap[MethodSymbol, Map[Int, List[(Symbol, Int)]]]
+  private def getMethodParamGroupedByType(sym: MethodSymbol): Map[Int, List[(Symbol, Int)]] = {
     methodParamTypeGroups synchronized {
       methodParamTypeGroups.getOrElseUpdate(sym, {
         // Case class extractors only care about the first params group.
@@ -49,9 +50,9 @@ trait ParanoChecks extends SyntaxUtils with Messages {
           (tpe, params) <- sym.paramLists.flatten.zipWithIndex.groupBy(_._1.typeSignature);
           if params.size > 1
         ) yield {
-          val paramNames = params.map { case (param, i) => param.name.toString -> i }
+          // val paramNames = params.map { case (param, i) => param.name.toString -> i }
           for ((param, i) <- params) yield {
-            i -> paramNames
+            i -> params
           }
         }
       }.flatten.toMap)
@@ -64,7 +65,7 @@ trait ParanoChecks extends SyntaxUtils with Messages {
         val csym = sym.asClass
         val ctor = csym.typeSignature.member(termNames.CONSTRUCTOR).asMethod
         // Case class extractors only care about the first params group.
-        ctor.paramLists.head.map(param => RichName(param.name.toString))
+        ctor.paramLists.head.map(param => RichName(param))
       })
     }
   }
@@ -105,27 +106,43 @@ trait ParanoChecks extends SyntaxUtils with Messages {
     val sym = target.symbol.asMethod
 
     if (!isWhitelistedMethod(sym)) {
-      val groups = getMethodParamTypeGroups(sym)
-      val params = getMethodParams(sym).flatten
+      val groups = getMethodParamGroupedByType(sym)
+      val params = getMethodParamNamess(sym).flatten
 
       val decisiveIdents = args.zip(params).map({
-        case (arg, param) if isArgSpecified(target, arg) =>
+        case (arg, (paramSymbol, paramName))
+            if isArgSpecified(target, arg) =>
           arg match {
             case Ident(name) =>
-              val n = name.toString
-              val matches = params.filter(_.containsExactFragment(n))
-              if (matches.contains(param)) {
+              val matches = params.filter {
+                case (_, paramName) =>
+                  paramName.containsExactFragment(name.toString)
+              }
+              if (matches.contains(paramName)) {
                 // Decisive if not matched by any other.
                 matches.size == 1
               } else {
                 // Not decisive.
                 if (!matches.isEmpty) {
-                  if (params.exists(_.name == n)) {
-                    messages += Message(Message.Error, arg,
-                      s"""Confusing name: $n not used for same-named param but for param ${param.name}""")
+                  val hasExactParamMatch = params.exists {
+                    case (_, paramName) =>
+                      paramName.name == name.toString
+                  }
+                  if (hasExactParamMatch) {
+                    messages +=
+                      Message(
+                        Message.Error, arg,
+                        IdentUsedAtWrongPosition(
+                          identName = name,
+                          positionParam = paramSymbol))
                   } else {
-                    messages += Message(Message.Error, arg,
-                      s"""Confusing name: $n sounds like ${matches.map(_.name).mkString(",")} but used for param ${param.name}""")
+                    messages +=
+                      Message(
+                        Message.Error, arg,
+                        IdentMatchingOtherParams(
+                          identName = name,
+                          givenParam = paramSymbol,
+                          matchingParams = matches.map(_._1)))
                   }
                 }
                 false
@@ -160,9 +177,17 @@ trait ParanoChecks extends SyntaxUtils with Messages {
           if (namedParams.size < group.size - 1) {
             val param = sym.paramLists.flatten.apply(i)
             val paramName = param.name.toString
-            val others = unnamedParams.map(_._1).filter(_ != paramName)
-            messages += Message(Message.Error, arg,
-              s"""Unnamed param $paramName can be confused with param${if (others.size == 1) "" else "s"} ${others.mkString(", ")} of same type ${param.typeSignature} (method: ${sym.owner.fullName}.${sym.name}""")
+            val others =
+              unnamedParams.map(_._1)
+                .filter(_.name.toString != paramName)
+            messages +=
+              Message(
+                Message.Error, arg,
+                UnnamedParamConfusingWithOthersWithSameType(
+                  param,
+                  otherParams = others,
+                  tpe = param.typeSignature,
+                  sym))
           }
         }
       }
@@ -180,11 +205,15 @@ trait ParanoChecks extends SyntaxUtils with Messages {
           case Apply(target, args) =>
             for ((arg, field) <- args.zip(fields)) {
               arg match {
-                case Bind(argName, _) if !field.containsExactFragment(argName.toString) =>
-                  val an = argName.toString
-                  for (clashingField <- fields.find(_.containsExactFragment(an))) {
-                    messages += Message(Message.Error, arg,
-                      s"Confusing name: $an sounds like ${sym.name}.${clashingField.name} but extracts ${sym.name}.${field.name}")
+                case Bind(aliasName, _) if !field.containsExactFragment(aliasName.toString) =>
+                  for (clashingField <- fields.find(_.containsExactFragment(aliasName.toString))) {
+                    messages +=
+                      Message(
+                        Message.Error, arg,
+                        ExtractorAliasSoundsLikeOtherField(
+                          aliasName = aliasName,
+                          extractedField = field.symbol,
+                          clashingField.symbol))
                   }
                 case _ =>
               }
