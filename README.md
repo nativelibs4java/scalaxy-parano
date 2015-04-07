@@ -2,7 +2,7 @@
 
 # Scalaxy/Parano
 
-Extra compile-time checks that prevent some stupid mistakes.
+Extra compile-time checks that prevent some stupid mistakes (previously incubated at [Scalaxy](http://github.com/nativelibs4java/Scalaxy)).
 
 Can be used as a compiler plugin (preferred method), as a standalone compiler (`scalaxy.parano.ParanoCompiler`) or by calling a macro (`scalaxy.parano.verify()`).
 
