@@ -1,4 +1,5 @@
-package scalaxy.test
+package scalaxy.parano
+package test
 
 import org.junit._
 import org.junit.Assert._

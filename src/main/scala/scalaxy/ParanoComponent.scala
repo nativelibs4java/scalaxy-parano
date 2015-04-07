@@ -23,20 +23,19 @@ class ParanoComponent(
   import global._
   import definitions._
 
-  override val phaseName = "scalaxy-parano"
+  override val phaseName = ParanoComponent.phaseName
 
   override val runsAfter = List("typer")
   override val runsBefore = List("patmat")
 
-  override def info(pos: Position, msg: String, force: Boolean) = reporter.info(pos, msg, force)
-  override def error(pos: Position, msg: String) = reporter.error(pos, msg)
-
-  override def isSynthetic(mods: Modifiers) =
-    mods.hasFlag(Flags.SYNTHETIC)
-
   def newPhase(prev: Phase): StdPhase = new StdPhase(prev) {
     def apply(unit: CompilationUnit) {
-      check(unit.body)
+
+      report(check(unit.body), reporter.info, reporter.warning, reporter.error)
     }
   }
+}
+
+object ParanoComponent {
+  val phaseName = "scalaxy-parano"
 }

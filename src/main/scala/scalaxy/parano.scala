@@ -41,22 +41,14 @@ package object parano {
         override val global = c.universe
         import global._
 
-        override def info(pos: Position, msg: String, force: Boolean) =
-          c.info(pos.asInstanceOf[c.universe.Position], msg, force)
-
-        override def error(pos: Position, msg: String) =
-          c.error(pos.asInstanceOf[c.universe.Position], msg)
-
-        // TODO: Flag.SYNTHETIC does not exist in Scala 2.10.2, use it when available.
-        override def isSynthetic(mods: Modifiers) =
-          mods.toString.contains("<synthetic>")
-        //mods.hasFlag(Flag.SYNTHETIC)
-
-        check(tree.asInstanceOf[Tree])
+        report(
+          check(tree.asInstanceOf[Tree]),
+          (pos, msg, force) =>
+            c.info(pos.asInstanceOf[c.Position], msg, force),
+          (pos, msg) => c.warning(pos.asInstanceOf[c.Position], msg),
+          (pos, msg) => c.error(pos.asInstanceOf[c.Position], msg))
       }
       new MacroParanoChecks(c)
-      //println(tree)
-      //println(showRaw(tree))
 
       import c.universe._
       c.Expr(q"()")

@@ -38,7 +38,7 @@ scalaVersion := "2.11.6"
 autoCompilerPlugins := true
 
 // Scalaxy/Parano plugin
-addCompilerPlugin("com.nativelibs4java" %% "scalaxy-parano" % "0.3-SNAPSHOT")
+addCompilerPlugin("com.nativelibs4java" %% "scalaxy-parano" % "0.4-SNAPSHOT")
 
 // Ensure Scalaxy/Parano's plugin is used.
 scalacOptions += "-Xplugin-require:scalaxy-parano"
